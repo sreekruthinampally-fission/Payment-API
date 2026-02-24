@@ -5,19 +5,45 @@ from app.db import get_db
 from app.schemas import UserCreate, UserResponse, UserDetail
 from app import services
 from app.auth import create_access_token
+from app.auth import hash_password, verify_password
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-@router.post("/login")
-def login(username: str, password: str):
+@router.post("/signup", response_model=UserResponse, status_code=201)
+def signup(user: UserCreate, db: Session = Depends(get_db)):
 
-    # TODO: replace with DB validation
-    if username != "admin" or password != "admin":
+    # Check if user exists
+    existing_user = services.get_user_by_username(db, user.username)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
+    hashed_password = hash_password(user.password)
+
+    new_user = services.create_user(db, user, hashed_password)
+
+    return new_user
+@router.post("/login")
+def login(username: str, password: str, db: Session = Depends(get_db)):
+
+    user = services.get_user_by_username(db, username)
+
+    if not user:
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
-    access_token = create_access_token({"sub": username})
+    if not verify_password(password, user.password):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
 
-    return {"access_token": access_token, "token_type": "bearer"}
+    access_token = create_access_token(
+        data={
+            "sub": str(user.id),
+            "username": user.username
+        }
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
 
 @router.post("", response_model=UserResponse, status_code=201)
 def create_user(user: UserCreate, db: Session = Depends(get_db)):

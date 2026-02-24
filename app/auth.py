@@ -4,12 +4,22 @@ from jose import JWTError, jwt
 from typing import Optional
 from datetime import datetime, timedelta
 from app.schemas import User
+from passlib.context import CryptContext
 
-SECRET_KEY = "supersecretkey"  # move this to config later
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+SECRET_KEY = "supersecretkey"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 security = HTTPBearer()
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
 
 
 def create_access_token(data: dict):
@@ -28,9 +38,7 @@ def verify_token(token: str):
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> Optional[User]:
-
+    credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
     payload = verify_token(token)
 
@@ -40,7 +48,7 @@ async def get_current_user(
             detail="Invalid or expired token",
         )
 
-    return payload
+    return payload 
 
 
 

@@ -8,7 +8,7 @@ from app import services
 import uuid
 from app.auth import get_current_user
 
-router = APIRouter(prefix="/orders", tags=["orders"])
+router = APIRouter(prefix="/orders", tags=["orders"], dependencies=[Depends(get_current_user)])
 
 
 @router.post("", response_model=OrderResponse, status_code=201)
@@ -69,3 +69,4 @@ def list_orders(customer_id: str, db: Session = Depends(get_db)):
 @router.get("/orders")
 def get_orders(current_user = Depends(get_current_user)):
     return {"message": "You are authenticated", "user": current_user}
+
