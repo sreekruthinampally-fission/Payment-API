@@ -1,184 +1,95 @@
 # Payment API
 
-A FastAPI-based payment processing system with user management, order processing, and wallet functionality.
+FastAPI service for user signup/login, order creation, and wallet operations.
 
-## Quick Links
-
-- 📖 [Complete Deployment Guide](DEPLOYMENT.md) - Step-by-step local setup instructions
-- 📚 [Technical Documentation](DOCUMENTATION.md) - Architecture, flows, and development guide
-- 🔗 [API Documentation](http://localhost:8000/docs) - Interactive Swagger UI (after starting server)
+## Features
+- User signup and login with JWT auth
+- Order creation with optional idempotency key
+- Wallet balance, credit, and debit for the authenticated user
+- PostgreSQL persistence via SQLAlchemy ORM
 
 ## Prerequisites
-
 - Python 3.11+
-- Docker
-- PostgreSQL (via Docker)
+- PostgreSQL 16+
 
-## Quick Start
-
-### 1. Start PostgreSQL
-
-```bash
-docker run --name app_pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=appdb -p 5432:5432 -d postgres:16
-```
-
-### 2. Install Dependencies
+## Setup
+1. Create and activate a virtual environment.
+2. Install dependencies:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Run the Application
+3. Configure `.env`:
+
+```env
+DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/appdb
+SECRET_KEY=replace-with-a-long-random-secret
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+ENABLE_GRACEFUL_DEGRADATION=false
+```
+
+4. Apply schema (optional if relying on ORM startup `create_all`):
+
+```bash
+psql -U postgres -d appdb -f sql/schema.sql
+```
+
+5. Start the API:
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-The API will be available at `http://localhost:8000`
+## API Overview
 
-### 4. Seed Sample Data
+### Auth
+- `POST /users/signup`
+- `POST /users/login`
+- `GET /users/me` (Bearer token required)
+
+### Orders (Bearer token required)
+- `POST /orders`
+- `GET /orders`
+
+### Wallet (Bearer token required)
+- `GET /wallet/me`
+- `POST /wallet/me/credit`
+- `POST /wallet/me/debit`
+
+## Example Flow
+
+1. Signup:
 
 ```bash
-# Seed multiple users with wallets and orders
-python scripts/seed_data.py --all
-
-# Or seed a single user
-python scripts/seed_data.py CUST-001
-```
-
-## API Endpoints
-
-### Users
-
-**Create User**
-```bash
-curl -X POST http://localhost:8000/users \
+curl -X POST http://localhost:8000/users/signup \
   -H "Content-Type: application/json" \
   -d '{
-    "user_id": "CUST-001",
-    "email": "customer@example.com",
-    "full_name": "John Doe",
-    "phone": "+91-9876543210"
+    "email":"user@example.com",
+    "full_name":"Demo User",
+    "phone":"+1-555-0101",
+    "password":"secret123"
   }'
 ```
 
-**Get User**
-```bash
-curl http://localhost:8000/users/CUST-001
-```
+2. Login:
 
-**List Users**
 ```bash
-curl http://localhost:8000/users
-```
-
-### Orders
-
-**Create Order**
-```bash
-curl -X POST http://localhost:8000/orders \
+curl -X POST http://localhost:8000/users/login \
   -H "Content-Type: application/json" \
   -d '{
-    "customer_id": "CUST-001",
-    "amount": 499.99,
-    "currency": "INR",
-    "idempotency_key": "order-123"
+    "email":"user@example.com",
+    "password":"secret123"
   }'
 ```
 
-**List Orders**
-```bash
-curl "http://localhost:8000/orders?customer_id=CUST-001"
-```
-
-### Wallet
-
-**Credit Wallet**
-```bash
-curl -X POST http://localhost:8000/wallet/CUST-001/credit \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 1000}'
-```
-
-**Debit Wallet**
-```bash
-curl -X POST http://localhost:8000/wallet/CUST-001/debit \
-  -H "Content-Type: application/json" \
-  -d '{"amount": 200}'
-```
-
-**Get Wallet Balance**
-```bash
-curl http://localhost:8000/wallet/CUST-001
-```
-
-## Testing Scenarios
-
-Run various test scenarios to validate the API:
+3. Use token:
 
 ```bash
-# Run all scenarios with seeding
-python scripts/run_scenarios.py --scenario all --seed
-
-# Run specific scenario
-python scripts/run_scenarios.py --scenario orders_retry
-python scripts/run_scenarios.py --scenario wallet_concurrency
-python scripts/run_scenarios.py --scenario false_success
-
-# Repeat scenario multiple times
-python scripts/run_scenarios.py --scenario wallet_concurrency --repeat 5
+curl -X GET http://localhost:8000/wallet/me \
+  -H "Authorization: Bearer <ACCESS_TOKEN>"
 ```
 
-## Database Management
-
-### Using SQL Files
-
-**Initialize schema:**
-```bash
-docker exec -i app_pg psql -U postgres -d appdb < sql/schema.sql
-```
-
-**Load seed data:**
-```bash
-docker exec -i app_pg psql -U postgres -d appdb < sql/seed_data.sql
-```
-
-**Connect to database:**
-```bash
-docker exec -it app_pg psql -U postgres -d appdb
-```
-
-## Project Structure
-
-```
-payment-api/
-├── app/
-│   ├── __init__.py
-│   ├── main.py           # FastAPI application
-│   ├── config.py         # Configuration
-│   ├── db.py             # Database setup
-│   ├── models.py         # SQLAlchemy models
-│   ├── schemas.py        # Pydantic schemas
-│   ├── services.py       # Business logic
-│   ├── routes_orders.py  # Order endpoints
-│   ├── routes_wallet.py  # Wallet endpoints
-│   └── auth.py           # Authentication utilities
-├── scripts/
-│   ├── run_scenarios.py  # Test scenarios
-│   └── seed_data.py      # Data seeding
-├── requirements.txt
-├── .gitignore
-└── README.md
-```
-
-## Development
-
-The application uses:
-- FastAPI for the web framework
-- SQLAlchemy 2.x for ORM
-- PostgreSQL for the database
-- Pydantic v2 for data validation
-
-Database schema is automatically initialized on application startup.
+Swagger UI: `http://localhost:8000/docs`

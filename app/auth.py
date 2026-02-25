@@ -1,54 +1,89 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from typing import Optional
 from datetime import datetime, timedelta
-from app.schemas import User
-from passlib.context import CryptContext
+from uuid import UUID
+import base64
+import hashlib
+import hmac
+import secrets
+from app.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-SECRET_KEY = "supersecretkey"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+SECRET_KEY = settings.secret_key
+ALGORITHM = settings.algorithm
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
+PBKDF2_ITERATIONS = 100_000
 
 security = HTTPBearer()
 
+
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """Hash a password using PBKDF2-HMAC-SHA256."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt,
+        PBKDF2_ITERATIONS
+    )
+    salt_b64 = base64.b64encode(salt).decode("ascii")
+    digest_b64 = base64.b64encode(digest).decode("ascii")
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt_b64}${digest_b64}"
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a plain password against stored PBKDF2 hash."""
+    try:
+        scheme, iterations, salt_b64, digest_b64 = hashed_password.split("$", 3)
+        if scheme != "pbkdf2_sha256":
+            return False
+        salt = base64.b64decode(salt_b64.encode("ascii"))
+        expected = base64.b64decode(digest_b64.encode("ascii"))
+        actual = hashlib.pbkdf2_hmac(
+            "sha256",
+            plain_password.encode("utf-8"),
+            salt,
+            int(iterations)
+        )
+        return hmac.compare_digest(actual, expected)
+    except Exception:
+        return False
 
 
-def create_access_token(data: dict):
+def create_access_token(data: dict) -> str:
+    """Create a signed JWT access token."""
     to_encode = data.copy()
     expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def verify_token(token: str):
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """Return authenticated user id from bearer token."""
+    token = credentials.credentials
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload
+        user_id = payload.get("sub")
+
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload",
+            )
+
+        try:
+            return UUID(user_id)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload",
+            )
+
     except JWTError:
-        return None
-
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)):
-    token = credentials.credentials
-    payload = verify_token(token)
-
-    if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
-
-    return payload 
-
-
-

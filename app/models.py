@@ -1,7 +1,6 @@
-from sqlalchemy import Column, String, Numeric, DateTime, CheckConstraint, Text, ForeignKey
+from sqlalchemy import Column, String, Numeric, DateTime, CheckConstraint, Text, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime
 import uuid
 
@@ -11,14 +10,14 @@ Base = declarative_base()
 class User(Base):
     __tablename__ = "users"
     
-    user_id = Column(String(100), primary_key=True)
-    email = Column(String(255), unique=True, nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email = Column(String(255), unique=True, nullable=False, index=True)
     full_name = Column(String(255), nullable=False)
     phone = Column(String(20), nullable=True)
+    hashed_password = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
-    is_active = Column(String(10), default="true")
+    is_active = Column(Boolean, default=True)
     
-    # Relationships
     orders = relationship("Order", back_populates="user")
     wallet = relationship("Wallet", back_populates="user", uselist=False)
 
@@ -27,14 +26,13 @@ class Order(Base):
     __tablename__ = "orders"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    customer_id = Column(String(100), ForeignKey('users.user_id'), nullable=False)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
     amount = Column(Numeric(10, 2), nullable=False)
     currency = Column(String(10), nullable=False)
     idempotency_key = Column(Text, nullable=True)
     status = Column(String(50), nullable=False, default="created")
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     user = relationship("User", back_populates="orders")
     
     __table_args__ = (
@@ -45,11 +43,10 @@ class Order(Base):
 class Wallet(Base):
     __tablename__ = "wallets"
     
-    customer_id = Column(String(100), ForeignKey('users.user_id'), primary_key=True)
+    customer_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), primary_key=True)
     balance = Column(Numeric(10, 2), nullable=False, default=0)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
     user = relationship("User", back_populates="wallet")
     
     __table_args__ = (

@@ -1,112 +1,91 @@
 #!/usr/bin/env python3
+import argparse
 import requests
-import sys
 
 BASE_URL = "http://localhost:8000"
 
 
-def seed_user(user_id: str, email: str, full_name: str, phone: str = None):
-    """Create a user."""
-    print(f"Creating user {user_id}...")
-    
+def ensure_user(base_url: str, email: str, full_name: str, password: str) -> None:
+    """Create a user if it does not already exist."""
     response = requests.post(
-        f"{BASE_URL}/users",
+        f"{base_url}/users/signup",
         json={
-            "user_id": user_id,
             "email": email,
             "full_name": full_name,
-            "phone": phone
-        }
+            "phone": None,
+            "password": password,
+        },
+        timeout=10.0,
     )
-    
     if response.status_code == 201:
-        data = response.json()
-        print(f"✓ User created: {data['user_id']} - {data['full_name']} ({data['email']})")
-        return True
+        print(f"User created: {email}")
+    elif response.status_code == 400:
+        print(f"User already exists: {email}")
     else:
-        print(f"✗ Failed to create user: {response.status_code}")
-        if response.status_code != 404:
-            print(f"  {response.text}")
-        return False
+        raise RuntimeError(f"Signup failed: {response.status_code} {response.text}")
 
 
-def seed_wallet(customer_id: str, initial_balance: float = 1000.0):
-    """Initialize a wallet with starting balance."""
-    print(f"Seeding wallet for {customer_id} with balance {initial_balance}...")
-    
+def login(base_url: str, email: str, password: str) -> str:
+    """Return bearer token for the user."""
     response = requests.post(
-        f"{BASE_URL}/wallet/{customer_id}/credit",
-        json={"amount": initial_balance}
+        f"{base_url}/users/login",
+        json={"email": email, "password": password},
+        timeout=10.0,
     )
-    
-    if response.status_code == 200:
-        data = response.json()
-        print(f"✓ Wallet created: {data['customer_id']} - Balance: {data['balance']}")
-        return True
-    else:
-        print(f"✗ Failed to create wallet: {response.status_code}")
-        print(f"  {response.text}")
-        return False
+    if response.status_code != 200:
+        raise RuntimeError(f"Login failed: {response.status_code} {response.text}")
+    return response.json()["access_token"]
 
 
-def seed_orders(customer_id: str, count: int = 3):
-    """Create sample orders."""
-    print(f"\nCreating {count} sample orders for {customer_id}...")
-    
+def auth_headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}"}
+
+
+def credit_wallet(base_url: str, token: str, amount: float) -> None:
+    response = requests.post(
+        f"{base_url}/wallet/me/credit",
+        headers=auth_headers(token),
+        json={"amount": amount},
+        timeout=10.0,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"Wallet credit failed: {response.status_code} {response.text}")
+    data = response.json()
+    print(f"Wallet credited. Balance: {data['balance']}")
+
+
+def create_orders(base_url: str, token: str, count: int) -> None:
     for i in range(count):
-        amount = 100.0 + (i * 50)
         response = requests.post(
-            f"{BASE_URL}/orders",
+            f"{base_url}/orders",
+            headers=auth_headers(token),
             json={
-                "customer_id": customer_id,
-                "amount": amount,
-                "currency": "INR",
-                "idempotency_key": f"seed-order-{customer_id}-{i}"
+                "amount": 100.0 + (i * 25.0),
+                "currency": "USD",
+                "idempotency_key": f"seed-order-{i}",
             },
-            timeout=10.0
+            timeout=10.0,
         )
-        
-        if response.status_code == 201:
-            data = response.json()
-            print(f"✓ Order created: {data['order_id']}")
-        else:
-            print(f"✗ Failed to create order: {response.status_code}")
-
-
-def seed_multiple_users():
-    """Seed multiple users with wallets and orders."""
-    users = [
-        ("CUST-001", "john.doe@example.com", "John Doe", "+91-9876543210"),
-        ("CUST-002", "jane.smith@example.com", "Jane Smith", "+91-9876543211"),
-        ("CUST-003", "bob.wilson@example.com", "Bob Wilson", "+91-9876543212"),
-    ]
-    
-    print("=" * 60)
-    print("Seeding multiple users")
-    print("=" * 60)
-    
-    for user_id, email, full_name, phone in users:
-        print(f"\n--- Processing {user_id} ---")
-        if seed_user(user_id, email, full_name, phone):
-            seed_wallet(user_id, 1000.0 + (int(user_id.split('-')[1]) * 500))
-            seed_orders(user_id, 2)
+        if response.status_code != 201:
+            raise RuntimeError(f"Order create failed: {response.status_code} {response.text}")
+        print(f"Order created: {response.json()['order_id']}")
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "--all":
-        seed_multiple_users()
-    else:
-        customer_id = sys.argv[1] if len(sys.argv) > 1 else "CUST-001"
-        email = sys.argv[2] if len(sys.argv) > 2 else f"{customer_id.lower()}@example.com"
-        full_name = sys.argv[3] if len(sys.argv) > 3 else "Test User"
-        
-        print(f"Starting data seeding for customer: {customer_id}\n")
-        
-        if seed_user(customer_id, email, full_name, "+91-9876543210"):
-            seed_wallet(customer_id, 1000.0)
-            seed_orders(customer_id, 3)
-        
-        print("\n✓ Seeding complete!")
+    parser = argparse.ArgumentParser(description="Seed authenticated sample data")
+    parser.add_argument("--base-url", default=BASE_URL)
+    parser.add_argument("--email", default="seed.user@example.com")
+    parser.add_argument("--password", default="secret123")
+    parser.add_argument("--full-name", default="Seed User")
+    parser.add_argument("--credit", type=float, default=1000.0)
+    parser.add_argument("--orders", type=int, default=3)
+    args = parser.parse_args()
+
+    ensure_user(args.base_url, args.email, args.full_name, args.password)
+    token = login(args.base_url, args.email, args.password)
+    credit_wallet(args.base_url, token, args.credit)
+    create_orders(args.base_url, token, args.orders)
+    print("Seeding complete.")
 
 
 if __name__ == "__main__":
