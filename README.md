@@ -25,10 +25,20 @@ pip install -r requirements.txt
 ```env
 DATABASE_URL=postgresql+psycopg2://postgres:postgres@localhost:5432/appdb
 SECRET_KEY=replace-with-a-long-random-secret
+APP_ENV=production
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 CORS_ORIGINS=http://localhost:3000,http://localhost:5173
 ENABLE_GRACEFUL_DEGRADATION=false
+CREATE_TABLES_ON_STARTUP=false
+LOG_LEVEL=INFO
+LOG_FORMAT=plain
+LOGIN_ATTEMPT_LIMIT=5
+LOGIN_ATTEMPT_WINDOW_SECONDS=300
+DB_POOL_SIZE=10
+DB_MAX_OVERFLOW=20
+DB_POOL_TIMEOUT=30
+DB_POOL_RECYCLE=1800
 ```
 
 4. Apply schema (optional if relying on ORM startup `create_all`):

@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
 import argparse
 import time
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 class ScenarioRunner:
@@ -40,7 +47,7 @@ class ScenarioRunner:
         self.token = login.json()["access_token"]
 
     def orders_retry(self):
-        print("\n=== orders_retry ===")
+        logger.info("=== orders_retry ===")
         idempotency_key = f"retry-{int(time.time())}"
         payload = {
             "amount": 120.0,
@@ -60,11 +67,11 @@ class ScenarioRunner:
             json=payload,
             timeout=10.0,
         )
-        print(f"First: {first.status_code} {first.text}")
-        print(f"Second: {second.status_code} {second.text}")
+        logger.info("First: %s %s", first.status_code, first.text)
+        logger.info("Second: %s %s", second.status_code, second.text)
 
     def wallet_concurrency(self):
-        print("\n=== wallet_concurrency ===")
+        logger.info("=== wallet_concurrency ===")
         requests.post(
             f"{self.base_url}/wallet/me/credit",
             headers=self._headers(),
@@ -91,11 +98,11 @@ class ScenarioRunner:
             headers=self._headers(),
             timeout=10.0,
         ).json()
-        print(f"Successful debits: {success_count}/20")
-        print(f"Current balance: {wallet['balance']}")
+        logger.info("Successful debits: %s/20", success_count)
+        logger.info("Current balance: %s", wallet["balance"])
 
     def mixed(self):
-        print("\n=== mixed ===")
+        logger.info("=== mixed ===")
         requests.post(
             f"{self.base_url}/wallet/me/credit",
             headers=self._headers(),
@@ -124,8 +131,12 @@ class ScenarioRunner:
             headers=self._headers(),
             timeout=10.0,
         )
-        print(f"Wallet: {wallet.status_code} {wallet.text}")
-        print(f"Orders: {orders.status_code} count={len(orders.json()) if orders.status_code == 200 else 'n/a'}")
+        logger.info("Wallet: %s %s", wallet.status_code, wallet.text)
+        logger.info(
+            "Orders: %s count=%s",
+            orders.status_code,
+            len(orders.json()) if orders.status_code == 200 else "n/a",
+        )
 
 
 def main():

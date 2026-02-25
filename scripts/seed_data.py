@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 import argparse
+import logging
 import requests
 
 BASE_URL = "http://localhost:8000"
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 def ensure_user(base_url: str, email: str, full_name: str, password: str) -> None:
@@ -18,9 +24,9 @@ def ensure_user(base_url: str, email: str, full_name: str, password: str) -> Non
         timeout=10.0,
     )
     if response.status_code == 201:
-        print(f"User created: {email}")
+        logger.info("User created: %s", email)
     elif response.status_code == 400:
-        print(f"User already exists: {email}")
+        logger.info("User already exists: %s", email)
     else:
         raise RuntimeError(f"Signup failed: {response.status_code} {response.text}")
 
@@ -51,7 +57,7 @@ def credit_wallet(base_url: str, token: str, amount: float) -> None:
     if response.status_code != 200:
         raise RuntimeError(f"Wallet credit failed: {response.status_code} {response.text}")
     data = response.json()
-    print(f"Wallet credited. Balance: {data['balance']}")
+    logger.info("Wallet credited. Balance: %s", data["balance"])
 
 
 def create_orders(base_url: str, token: str, count: int) -> None:
@@ -68,7 +74,7 @@ def create_orders(base_url: str, token: str, count: int) -> None:
         )
         if response.status_code != 201:
             raise RuntimeError(f"Order create failed: {response.status_code} {response.text}")
-        print(f"Order created: {response.json()['order_id']}")
+        logger.info("Order created: %s", response.json()["order_id"])
 
 
 def main():
@@ -85,7 +91,7 @@ def main():
     token = login(args.base_url, args.email, args.password)
     credit_wallet(args.base_url, token, args.credit)
     create_orders(args.base_url, token, args.orders)
-    print("Seeding complete.")
+    logger.info("Seeding complete.")
 
 
 if __name__ == "__main__":
